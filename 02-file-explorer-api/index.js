@@ -4,11 +4,14 @@ const fs = require('fs').promises;
 const path = require('path');
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dirPath = req.body.path || './uploads';
-    fs.mkdir(dirPath, { recursive: true })
-      .then(() => cb(null, dirPath))
-      .catch(err => cb(err)); 
+  destination: async (req, file, cb) => {
+    try {
+      const dirPath = req.query.path || './uploads';
+      await fs.mkdir(dirPath, { recursive: true });
+      cb(null, dirPath);
+    } catch (err) {
+      cb(err);
+    }
   },
 
   filename: (req, file, cb) => {
@@ -16,9 +19,14 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage });
+const upload = multer({ storage: storage });
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`, req.query);
+  next();
+});
 
 app.get('/api/list', async (req, res) => {
   const dirPath = req.query.path || './';
@@ -43,11 +51,38 @@ app.get('/api/list', async (req, res) => {
   }
 });
 
-app.post('/api/upload', upload.single('file'), (req, res) => {
-  console.log('file saved at ', req.file.path);
-  res.json({
-    message: 'File uploaded successfully',
-    file: req.file,
+app.post('/api/upload', (req, res) => {
+  console.log('Upload request received');
+  console.log('Headers:', req.headers);
+  console.log('Content-Length:', req.headers['content-length']);
+  console.log('Content-Type:', req.headers['content-type']);
+  
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('Multer error:', err);
+      console.error('Multer error code:', err.code);
+      return res.status(500).json({ error: err.message });
+    }
+
+    console.log('Multer processed request successfully');
+    console.log('req.file exists:', !!req.file);
+    console.log('req.file details:', req.file);
+    console.log('req.body:', req.body);
+
+    if (!req.file) {
+      console.log('No file found after multer processing');
+      console.log('This usually means:');
+      console.log('1. Field name is not "file"');
+      console.log('2. Postman field type is "Text" instead of "File"');
+      console.log('3. No file was actually selected in Postman');
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    console.log('SUCCESS: File saved at:', req.file.path);
+    res.json({
+      message: 'File uploaded successfully',
+      file: req.file,
+    });
   });
 });
 
