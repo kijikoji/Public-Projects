@@ -95,6 +95,21 @@ app.post('/api/upload', (req, res) => {
   });
 });
 
+app.delete('/api/delete/:filename', async (req, res) => {
+  const filePath = path.join(__dirname, 'uploads', req.params.filename);
+
+  try {
+    await fs.unlink(filePath); // removes a single file
+    res.json({ message: `${req.params.filename} deleted successfully` });
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      res.status(404).json({ error: 'File not found' });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
