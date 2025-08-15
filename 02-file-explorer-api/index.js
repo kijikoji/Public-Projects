@@ -51,6 +51,15 @@ app.get('/api/list', async (req, res) => {
   }
 });
 
+app.get('/download/:filename', (req, res) => {
+  const filePath = path.join(__dirname, 'uploads', req.params.filename);
+  res.download(filePath, err => {
+    if (err) {
+      res.status(500).send({ error: err.message });
+    }
+  });
+});
+
 app.post('/api/upload', (req, res) => {
   console.log('Upload request received');
   console.log('Headers:', req.headers);
