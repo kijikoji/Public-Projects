@@ -3,12 +3,22 @@ const multer = require('multer');
 const fs = require('fs').promises;
 const path = require('path');
 
+const baseUploads = path.join(__dirname, 'uploads');
+
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
     try {
-      const dirPath = req.query.path || './uploads';
-      await fs.mkdir(dirPath, { recursive: true });
-      cb(null, dirPath);
+      let relative = req.body?.path || req.query?.path || '';
+      relative = relative.replace(/^\/+/, '');
+
+      const safePath = path.join(baseUploads, relative);
+
+      if (!safePath.startsWith(baseUploads)) {
+        return cb(new Error('Invalid path'));
+      }
+
+      await fs.mkdir(safePath, { recursive: true });
+      cb(null, safePath);
     } catch (err) {
       cb(err);
     }
@@ -95,12 +105,30 @@ app.post('/api/upload', (req, res) => {
   });
 });
 
-app.delete('/api/delete/:filename', async (req, res) => {
-  const filePath = path.join(__dirname, 'uploads', req.params.filename);
+app.delete('/api/delete', async (req, res) => {
+  // Get the path from query parameter instead
+  const relativePath = req.query.path;
+  
+  if (!relativePath) {
+    return res.status(400).json({ error: 'Path parameter is required' });
+  }
+  
+  // Remove 'uploads/' prefix if it exists in the path
+  const cleanPath = relativePath.startsWith('uploads/') 
+    ? relativePath.substring('uploads/'.length) 
+    : relativePath;
+    
+  const filePath = path.join(__dirname, 'uploads', cleanPath);
+
+  // Security: prevent path traversal outside uploads/
+  const uploadsDir = path.join(__dirname, 'uploads');
+  if (!filePath.startsWith(uploadsDir)) {
+    return res.status(400).json({ error: 'Invalid file path' });
+  }
 
   try {
-    await fs.unlink(filePath); // removes a single file
-    res.json({ message: `${req.params.filename} deleted successfully` });
+    await fs.rm(filePath, { recursive: true, force: true });
+    res.json({ message: `${relativePath} deleted successfully` });
   } catch (err) {
     if (err.code === 'ENOENT') {
       res.status(404).json({ error: 'File not found' });
