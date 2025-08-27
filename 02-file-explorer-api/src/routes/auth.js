@@ -2,7 +2,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const users = require('../models/user');
+const { createUser, findUserByUsername } = require('../models/user');
 
 const router = express.Router();
 const SECRET = process.env.JWT_SECRET || "supersecret";
@@ -15,24 +15,22 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: "Username and password required" });
   }
 
-  const existing = users.find(u => u.username === username);
+  const existing = findUserByUsername(username);
   if (existing) {
     return res.status(400).json({ error: "Username already exists" });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const newUser = { id: users.length + 1, username, passwordHash };
+  const newUser = createUser(username, passwordHash);
 
-  users.push(newUser);
-
-  res.status(201).json({ message: "User created", user: { id: newUser.id, username: newUser.username } });
+  res.status(201).json({ message: "User created", user: newUser });
 });
 
 // Login route (same as before)
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
-  const user = users.find(u => u.username === username);
 
+  const user = findUserByUsername(username);
   if (!user) return res.status(401).json({ error: "Invalid credentials" });
 
   const match = await bcrypt.compare(password, user.passwordHash);
