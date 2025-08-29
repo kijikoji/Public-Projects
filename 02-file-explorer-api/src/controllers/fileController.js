@@ -1,21 +1,41 @@
 const fs = require('fs').promises;
 const path = require('path');
+
 const baseUploads = path.join(__dirname, '../../uploads');
+
+// helper to resolve safe user path
+function getUserSafePath(req, relative = '') {
+  const userId = req.user?.id;
+  if (!userId) throw new Error('Unauthorized');
+
+  relative = relative.replace(/^\/+/, '');
+
+  const userFolder = path.join(baseUploads, String(userId));
+  const fullPath = path.join(userFolder, relative);
+
+  if (!fullPath.startsWith(userFolder)) {
+    throw new Error('Invalid path');
+  }
+
+  return { userFolder, fullPath };
+}
 
 exports.listFiles = async (req, res, next) => {
   try {
-    const dirPath = path.join(baseUploads, req.query.path || './');
-    const files = await fs.readdir(dirPath);
-    const result = await Promise.all(files.map(async name => {
-      const fullPath = path.join(dirPath, name);
-      const stats = await fs.stat(fullPath);
-      return {
-        name,
-        type: stats.isDirectory() ? 'directory' : 'file',
-        size: stats.size,
-        modified: stats.mtime
-      };
-    }));
+    const { fullPath } = getUserSafePath(req, req.query.path || './');
+    const files = await fs.readdir(fullPath);
+    const result = await Promise.all(
+      files.map(async name => {
+        const filePath = path.join(fullPath, name);
+        const stats = await fs.stat(filePath);
+        return {
+          name,
+          type: stats.isDirectory() ? 'directory' : 'file',
+          size: stats.size,
+          modified: stats.mtime
+        };
+      })
+    );
     res.json({ success: true, data: result });
   } catch (err) {
     next(err);
@@ -23,10 +43,15 @@ exports.listFiles = async (req, res, next) => {
 };
 
 exports.downloadFile = (req, res, next) => {
-  const filePath = path.join(baseUploads, req.params.filename);
-  res.download(filePath, err => {
-    if (err) next(err);
-  });
+  try {
+    const { fullPath } = getUserSafePath(req, req.query?.path || '');
+    const filePath = path.join(fullPath, req.params.filename);
+    res.download(filePath, err => {
+      if (err) next(err);
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 exports.uploadFile = (req, res) => {
@@ -38,15 +63,16 @@ exports.uploadFile = (req, res) => {
 
 exports.deleteFile = async (req, res, next) => {
   try {
-    const relativePath = req.query.path;
-    if (!relativePath) {
-      return res.status(400).json({ success: false, error: 'Path parameter is required' });
+    if (!req.query.path) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Path parameter is required' });
     }
 
-    const filePath = path.join(baseUploads, relativePath);
-    await fs.rm(filePath, { recursive: true, force: true });
+    const { fullPath } = getUserSafePath(req, req.query.path);
+    await fs.rm(fullPath, { recursive: true, force: true });
 
-    res.json({ success: true, message: `${relativePath} deleted successfully` });
+    res.json({ success: true, message: `${req.query.path} deleted successfully` });
   } catch (err) {
     next(err);
   }

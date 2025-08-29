@@ -1,17 +1,24 @@
 const multer = require('multer');
 const fs = require('fs').promises;
 const path = require('path');
+
 const baseUploads = path.join(__dirname, '../../uploads');
 
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
     try {
+      const userId = req.user?.id;
+      if (!userId) return cb(new Error('Unauthorized'));
+
+      // optional subfolder path passed in body or query
       let relative = req.body?.path || req.query?.path || '';
       relative = relative.replace(/^\/+/, '');
 
-      const safePath = path.join(baseUploads, relative);
+      // full user folder path
+      const userFolder = path.join(baseUploads, String(userId));
+      const safePath = path.join(userFolder, relative);
 
-      if (!safePath.startsWith(baseUploads)) {
+      if (!safePath.startsWith(userFolder)) {
         return cb(new Error('Invalid path'));
       }
 
